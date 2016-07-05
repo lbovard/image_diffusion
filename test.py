@@ -4,100 +4,95 @@ import matplotlib.cm as cm
 import random as random
 import numpy as np
 
-# stolen from here
-# https://samarthbhargav.wordpress.com/2014/05/05/image-processing-with-python-rgb-to-grayscale-conversion/
-def weightedAverage(pixel):
-    return 0.299*pixel[0] + 0.587*pixel[1] + 0.114*pixel[2]
 
-def set_up_image(image):
-  grey = np.zeros((image.shape[0], image.shape[1])) # init 2D numpy array
-  # get row number
-  for rownum in range(len(image)):
-     for colnum in range(len(image[rownum])):
-        grey[rownum][colnum] = weightedAverage(image[rownum][colnum])/255.
-  return grey
+#read in the image
+image=misc.imread("images/GRMHD_True_Image_Greyscale.png")
+image=image/float(np.max(image))
 
+c=0.2
+per_remove=0.98
+thresh=0.5
+nsteps=1000
 
-def convert_index(i,j,N):
-  return N*i+j
+#pad the edges of the image so we can apply finite difference
+pad_image=np.zeros((image.shape[0]+2,image.shape[1]+2))
 
-image=misc.imread("adele.jpg")
+#copy the old image into the new image
+nx,ny=pad_image.shape[0],pad_image.shape[1]
+pad_image[1:nx-1,1:ny-1]=image[:,:]
 
-c=0.1
-remove=90
-nsteps=500
+#store the original image
+orig_image=np.copy(pad_image)
 
-image=set_up_image(image)
+#now randomly pick points on the image
+np_remove=int(per_remove*nx*ny)
+ids=random.sample(xrange(0,nx*ny),np_remove)
+pad_image=pad_image.flatten() 
+#set those random points to 0
+pad_image[ids]=0
 
-plt.imshow(image, cmap = cm.Greys_r,interpolation='none')
-plt.show()
+#now add the threshold
+pad_image[np.where(pad_image<thresh)[0]]=0
 
-#a copy of the original
-temp_image=np.zeros((image.shape[0]+2,image.shape[1]+2))
-print temp_image.shape
-
-for i in range(1,image.shape[0]):
-  for j in range(1,image.shape[1]):
-    temp_image[i][j]=image[i][j]
-
-image=temp_image
-image_copy=image
-N=image.shape[0]
-
-print image_copy.shape
-#now randomly pick intergers
-ids=random.sample(xrange(0,N*N),remove*remove)
-image_copy=image_copy.flatten()
-image_copy[ids]=0
-
-non_zero_idx=np.where(image_copy>0)[0]
-non_zero_value=image_copy[non_zero_idx]
-
-for x in range(len(image_copy)):
-  if image_copy[x]<0.5:
-    image_copy[x]=0
-
-a=len(image_copy)
-b=len(np.where(image_copy<1.e-6)[0])
+a=np.shape(pad_image)[0]
+#get all non-zero points
+non_zero_idx=np.where(pad_image>0.0)[0]
+b=np.shape(non_zero_idx)[0]
 print "there are total  : " , a
-print "points set to 0  : " , b
-print "% blanked is     : " , float(b)/a
-image_copy=image_copy.reshape((N,N))
+print "points set to 0  : " , a-b
+print "% blanked is     : " , 100*float(a-b)/a
+perblank=100*float(a-b)/a
 
-f=image_copy
-fnew=np.zeros((f.shape[0],f.shape[1]))
-f_orig=f
+oa=pad_image[non_zero_idx]
+f=pad_image.reshape((nx,ny))
+fnew=np.zeros((nx,ny)) 
 
-plt.imshow(f, cmap = cm.Greys_r,interpolation='none')
-plt.show()
-print image_copy[13:15,13:15]
-print f.shape
+#copy the initial state of the image
+init_image=np.copy(f)
+
 for k in range(0,nsteps):
   #now do the iteration
-  co=0
   fnew=np.zeros((f.shape[0],f.shape[1]))
-  for i in range(1,f.shape[0]-1):
-    for j in range(1,f.shape[1]-1): 
-      #get the converted index
-      ci=convert_index(i,j,N)
-      if ci not in non_zero_idx:
-        co+=1
-        fnew[i][j]=f[i][j]+c*(f[i+1][j]+f[i-1][j]+f[i][j-1]+f[i][j-1]-4*f[i][j])
-      else:
-        fnew[i][j]=f[i][j]
-  
-  print np.max(np.abs(f-fnew))
-  f=fnew
+  si,ei=1,nx-1
+  #compute the second derivative using finite differences and time step
+  fnew[si:ei,si:ei]=(1-4*c)*f[si:ei,si:ei]+c*(f[si+1:ei+1,si:ei]+f[si-1:ei-1,si:ei] + f[si:ei,si-1:ei-1] +f[si:ei,si+1:ei+1])
 
-image_copy=fnew.reshape((N,N))
+  #flatten array for this operation
+  fnew=fnew.reshape(-1)
+  #copy the fixed points
+  fnew[non_zero_idx]=oa
+  fnew=fnew.reshape((nx,ny))
+
+  if k % 100 ==0 :
+    print k,np.max(np.abs(f-fnew))
+  f=fnew 
+
+image_final=fnew
 
 fig = plt.figure()
-plt.subplot(131)
-plt.imshow(temp_image, cmap = cm.Greys_r,interpolation='none')
-plt.subplot(132)
-plt.imshow(image_copy, cmap = cm.Greys_r,interpolation='none')
-plt.subplot(133)
-plt.imshow(f_orig, cmap = cm.Greys_r,interpolation='none')
-plt.savefig("output.pdf")
-plt.show()
+fig.subplots_adjust(hspace=0.1,wspace=0.1)
+
+ax0=fig.add_subplot(1,3,1)
+ax1=fig.add_subplot(1,3,2)
+ax2=fig.add_subplot(1,3,3)
+
+ax0.set_xticks([])
+ax1.set_xticks([])
+ax2.set_xticks([])
+
+ax0.set_yticks([])
+ax1.set_yticks([])
+ax2.set_yticks([])
+
+ax0.imshow(orig_image, cmap = cm.Greys_r,interpolation='none')
+ax0.set_title("Original image")
+ax1.imshow(image_final, cmap = cm.Greys_r,interpolation='none')
+ax1.set_title("Recovered image")
+ax1.text(0, nx, str(nsteps)+" itr", fontsize=5, color='white')
+ax2.imshow(init_image, cmap = cm.Greys_r,interpolation='none')
+ax2.set_title("Initial data")
+ax2.text(0, nx, str(perblank)[0:6]+"%  " + str(thresh) + " thresh", fontsize=5, color='white')
+
+plt.savefig("output.pdf",bbox_inches='tight')
+#plt.show()
 
