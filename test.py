@@ -1,3 +1,4 @@
+from matplotlib.colors import LogNorm
 from scipy import misc
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -8,15 +9,13 @@ import numpy as np
 #read in the image
 image=misc.imread("images/GRMHD_True_Image_Greyscale.png")
 image=image/float(np.max(image))
-
-c=0.2
-per_remove=0.98
+c=0.25
+per_remove=0.99
 thresh=0.5
 nsteps=1000
 
 #pad the edges of the image so we can apply finite difference
-pad_image=np.zeros((image.shape[0]+2,image.shape[1]+2))
-
+pad_image=np.zeros((image.shape[0]+2,image.shape[1]+2)) 
 #copy the old image into the new image
 nx,ny=pad_image.shape[0],pad_image.shape[1]
 pad_image[1:nx-1,1:ny-1]=image[:,:]
@@ -24,24 +23,39 @@ pad_image[1:nx-1,1:ny-1]=image[:,:]
 #store the original image
 orig_image=np.copy(pad_image)
 
-#now randomly pick points on the image
-np_remove=int(per_remove*nx*ny)
-ids=random.sample(xrange(0,nx*ny),np_remove)
+#total number of points
+totnp=np.shape(pad_image)[0]*np.shape(pad_image)[1]
+
+print '{0:40} : {1:10d}'.format("total number of points", totnp)
+
 pad_image=pad_image.flatten() 
-#set those random points to 0
-pad_image[ids]=0
+#number of points before threshholding
+print '{0:40} : {1:10f}'.format("threshold is ", thresh)
 
-#now add the threshold
-pad_image[np.where(pad_image<thresh)[0]]=0
+non_zero_idx=np.where(pad_image>0.0)[0]
+print '{0:40} : {1:10d}'.format("num non-zero before thresholding", non_zero_idx.shape[0])
 
-a=np.shape(pad_image)[0]
+#remove all points below threshhold
+pad_image[np.where(pad_image<thresh)[0]]=0.0
+non_zero_idx=np.where(pad_image>0.0)[0]
+
+print '{0:40} : {1:10d}'.format("num non-zero after thresholding", non_zero_idx.shape[0])
+
+nl=non_zero_idx.shape[0]
+npremove=int(nl*per_remove)
+print '{0:40} : {1:10f}'.format("percent of points to remove", per_remove)
+print '{0:40} : {1:10d}'.format("num points removed from threshold", npremove)
+
+#select randomly those points to remove
+ids=random.sample(xrange(0,nl),npremove) 
+pad_image[non_zero_idx[ids]]=0
+
 #get all non-zero points
 non_zero_idx=np.where(pad_image>0.0)[0]
 b=np.shape(non_zero_idx)[0]
-print "there are total  : " , a
-print "points set to 0  : " , a-b
-print "% blanked is     : " , 100*float(a-b)/a
-perblank=100*float(a-b)/a
+perblank=100*float(totnp-b)/totnp
+print '{0:40} : {1:10d}'.format("num non-zero points", b)
+print '{0:40} : {1:10f}'.format("% of image set to 0", perblank)
 
 oa=pad_image[non_zero_idx]
 f=pad_image.reshape((nx,ny))
@@ -50,6 +64,7 @@ fnew=np.zeros((nx,ny))
 #copy the initial state of the image
 init_image=np.copy(f)
 
+print '{0:>10} | {1:10}'.format("itr","   norm   ")
 for k in range(0,nsteps):
   #now do the iteration
   fnew=np.zeros((f.shape[0],f.shape[1]))
@@ -64,7 +79,8 @@ for k in range(0,nsteps):
   fnew=fnew.reshape((nx,ny))
 
   if k % 100 ==0 :
-    print k,np.max(np.abs(f-fnew))
+    diff=np.max(np.abs(f-fnew))
+    print '{0:10d} : {1:10f}'.format(int(k),diff)
   f=fnew 
 
 image_final=fnew
@@ -93,6 +109,9 @@ ax2.imshow(init_image, cmap = cm.Greys_r,interpolation='none')
 ax2.set_title("Initial data")
 ax2.text(0, nx, str(perblank)[0:6]+"%  " + str(thresh) + " thresh", fontsize=5, color='white')
 
+#print image_final[np.where(image_final>0.1)[0]].shape[0]
+norm_comp=np.sum(image_final)/float(np.sum(orig_image))
+print '{0:40} : {1:10f}'.format("total sum comparison", norm_comp)
 plt.savefig("output.pdf",bbox_inches='tight')
 #plt.show()
 
